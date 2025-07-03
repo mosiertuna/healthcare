@@ -46,6 +46,7 @@
 SPI_HandleTypeDef hspi4;
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 HX711 hx;
@@ -57,12 +58,33 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI4_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// Function to send card data to ESP32 in the required format
+void SendCardDataToESP32(uint8_t* cardId, float weight) {
+    uint8_t data[11];
+    
+    // Protocol: AA 01 UID[4] WEIGHT[4] 55
+    data[0] = 0xAA;      // Start byte
+    data[1] = 0x01;      // Type (card data)
+    
+    memcpy(&data[2], cardId, 4);              // 4 bytes UID
+    memcpy(&data[6], &weight, 4);
+    
+
+    
+    data[10] = 0x55;     // End byte
+    
+    // Send to ESP32 via UART2
+    HAL_UART_Transmit(&huart2, data, 11, 1000);
+}
+
 void Test_SPI_Connection(void) {
     char debug_buf[100];
     
@@ -194,6 +216,7 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI4_Init();
   MX_USART1_UART_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   // Declare buffer here
   char buf[200];
@@ -267,6 +290,9 @@ int main(void)
         
         HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
         
+        float a = (float)weight;
+        SendCardDataToESP32(CardID, a);
+        
         // Turn on LED to indicate card read
         HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
         HAL_Delay(500);
@@ -276,7 +302,7 @@ int main(void)
         no_card_counter = 0;
         
         // Wait to avoid multiple reads
-        HAL_Delay(1500);
+        HAL_Delay(500);
         
     } else {
         // No card detected - only show occasionally
@@ -285,6 +311,7 @@ int main(void)
         if (no_card_counter >= 10) { // Show every 10th cycle (5 seconds)
             sprintf(buf, "Waiting for card... | Raw: %ld | Weight: %d g | MFRC522 Status: 0x%02X\r\n", raw_value, weight, status);
             HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
+            HAL_UART_Transmit(&huart2, 'hello', 5, 1000);
             no_card_counter = 0;
         }
         
@@ -420,6 +447,38 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -453,6 +512,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PA2 PA3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PD0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
