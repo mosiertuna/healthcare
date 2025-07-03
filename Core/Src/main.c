@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "tm_stm32f4_mfrc522.h"
 #include "HX711.h"
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,6 +49,7 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 HX711 hx;
+uint32_t no_card_counter = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,7 +63,104 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void Test_SPI_Connection(void) {
+    char debug_buf[100];
+    
+    // Test SPI by reading multiple registers
+    sprintf(debug_buf, "=== SPI Communication Test ===\r\n");
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test CS pin control
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, GPIO_PIN_SET);
+    HAL_Delay(10);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, GPIO_PIN_RESET);
+    HAL_Delay(10);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, GPIO_PIN_SET);
+    
+    sprintf(debug_buf, "CS Pin Test: OK\r\n");
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+}
 
+void Test_HX711_Connection(void) {
+    char debug_buf[150];
+    
+    sprintf(debug_buf, "=== HX711 Test ===\r\n");
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test HX711 ready state
+    if (HX711_is_ready(&hx)) {
+        sprintf(debug_buf, "HX711 Ready: YES\r\n");
+    } else {
+        sprintf(debug_buf, "HX711 Ready: NO (Check DT pin PD1)\r\n");
+    }
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test raw reading
+    long raw_value = HX711_read(&hx);
+    sprintf(debug_buf, "HX711 Raw Value: %ld\r\n", raw_value);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test get_value function
+    float get_value = HX711_get_value(&hx, 1);
+    sprintf(debug_buf, "HX711 Get Value: %.2f\r\n", get_value);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test get_units function
+    float get_units = HX711_get_units(&hx, 1);
+    sprintf(debug_buf, "HX711 Get Units: %.2f\r\n", get_units);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Check scale and offset
+    float scale = HX711_get_scale(&hx);
+    long offset = HX711_get_offset(&hx);
+    sprintf(debug_buf, "HX711 Scale: %.2f, Offset: %ld\r\n", scale, offset);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test SCK pin toggle
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_0, GPIO_PIN_SET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOD, GPIO_PIN_0, GPIO_PIN_RESET);
+    sprintf(debug_buf, "SCK Pin Toggle: OK\r\n");
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+}
+
+void MFRC522_Debug(void) {
+    char debug_buf[150];
+    
+    sprintf(debug_buf, "=== MFRC522 Debug ===\r\n");
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test MFRC522 communication
+    uint8_t version = TM_MFRC522_ReadRegister(0x37); // Version register
+    sprintf(debug_buf, "MFRC522 Version: 0x%02X (Expected: 0x91 or 0x92)\r\n", version);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test antenna
+    uint8_t antenna = TM_MFRC522_ReadRegister(0x14); // TxControlReg
+    sprintf(debug_buf, "Antenna Status: 0x%02X\r\n", antenna);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test CommandReg
+    uint8_t command = TM_MFRC522_ReadRegister(0x01); // CommandReg
+    sprintf(debug_buf, "Command Reg: 0x%02X\r\n", command);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    // Test Status1Reg
+    uint8_t status1 = TM_MFRC522_ReadRegister(0x07); // Status1Reg
+    sprintf(debug_buf, "Status1 Reg: 0x%02X\r\n", status1);
+    HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    
+    if (version == 0x00 || version == 0xFF) {
+        sprintf(debug_buf, "ERROR: No communication with MFRC522!\r\n");
+        sprintf(debug_buf + strlen(debug_buf), "Check connections:\r\n");
+        sprintf(debug_buf + strlen(debug_buf), "- VCC: 3.3V (NOT 5V!)\r\n");
+        sprintf(debug_buf + strlen(debug_buf), "- SDA: PE4\r\n");
+        sprintf(debug_buf + strlen(debug_buf), "- SCK: PE2\r\n");
+        sprintf(debug_buf + strlen(debug_buf), "- MISO: PE5\r\n");
+        sprintf(debug_buf + strlen(debug_buf), "- MOSI: PE6\r\n");
+        HAL_UART_Transmit(&huart1, (const uint8_t*)debug_buf, strlen(debug_buf), 1000);
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -95,11 +195,40 @@ int main(void)
   MX_SPI4_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Declare buffer here
+  char buf[200];
+  
+  // Send initialization message
+  sprintf(buf, "=== System Diagnostic ===\r\n");
+  HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
+  
+  // Test SPI connection first
+  Test_SPI_Connection();
+  
+  // Initialize MFRC522
   TM_MFRC522_Init();
-  char buf[100];
+  
+  // Debug MFRC522
+  MFRC522_Debug();
+  
+  // Initialize HX711
   HX711_begin(&hx, GPIOD, GPIO_PIN_0, GPIOD, GPIO_PIN_1, 128);
-  HX711_set_scale(&hx, 1000.0f); // scale mẫu, sẽ hiệu chuẩn sau
-  HX711_tare(&hx, 10);
+  
+  // Test HX711 connection BEFORE configuration
+  Test_HX711_Connection();
+  
+  // Configure HX711
+  HX711_set_scale(&hx, 2); // Set scale to 2 for testing
+  sprintf(buf, "HX711 scale set to 2 for testing\r\n");
+  HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
+  
+  // Don't tare yet - let's see raw values first
+  // HX711_tare(&hx, 10);
+  
+  sprintf(buf, "=== Initialization Complete ===\r\n");
+  HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
+  
+  HAL_Delay(2000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -107,17 +236,61 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  uint8_t CardID[5];
-	  HAL_Delay(100);
-	  if(TM_MFRC522_Check(CardID)== MI_OK){
-		  sprintf(buf,"%s",CardID[5]);
-		  float weight = HX711_get_units(&hx, 5); // trung bình 5 lần
-		  sprintf(buf, "ID: %02X%02X%02X%02X%02X | Weight: %.2f g\r\n",
-		      CardID[0], CardID[1], CardID[2], CardID[3], CardID[4],
-		      weight);		  HAL_Delay(500);
-		  HAL_UART_Transmit(&huart1, (const uint8_t*) buf, strlen(buf), 2);
-		  HAL_Delay(500);
-	  }
+    uint8_t CardID[5];
+    uint8_t status;
+    int weight = 0;
+    long raw_value = 0;
+    
+    // Clear CardID array
+    memset(CardID, 0, sizeof(CardID));
+    
+    // Always try to read weight first
+    if (HX711_is_ready(&hx)) {
+        raw_value = HX711_read(&hx);
+        weight = HX711_get_units(&hx, 1); // Single reading for speed
+    }
+    
+    // Check for RFID card
+    status = TM_MFRC522_Check(CardID);
+    
+    if (status == MI_OK) {
+        // Card detected successfully
+        if (HX711_is_ready(&hx)) {
+            raw_value = HX711_read(&hx);
+            weight = HX711_get_units(&hx, 3); // More readings for accuracy
+            
+        }
+        weight = weight/ 100 -5114 + 2557;
+        // Format and send card ID + weight with debug info
+        sprintf(buf, "*** CARD DETECTED ***\r\nID: %02X%02X%02X%02X%02X\r\nRaw: %ld | Weight: %d g\r\n==================\r\n",
+                CardID[0], CardID[1], CardID[2], CardID[3], CardID[4], raw_value, weight);
+        
+        HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
+        
+        // Turn on LED to indicate card read
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_SET);
+        HAL_Delay(500);
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+        
+        // Reset counter
+        no_card_counter = 0;
+        
+        // Wait to avoid multiple reads
+        HAL_Delay(1500);
+        
+    } else {
+        // No card detected - only show occasionally
+        no_card_counter++;
+        
+        if (no_card_counter >= 10) { // Show every 10th cycle (5 seconds)
+            sprintf(buf, "Waiting for card... | Raw: %ld | Weight: %d g | MFRC522 Status: 0x%02X\r\n", raw_value, weight, status);
+            HAL_UART_Transmit(&huart1, (const uint8_t*)buf, strlen(buf), 1000);
+            no_card_counter = 0;
+        }
+        
+        HAL_Delay(500);
+    }
+    
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -198,7 +371,7 @@ static void MX_SPI4_Init(void)
   hspi4.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi4.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi4.Init.NSS = SPI_NSS_SOFT;
-  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi4.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32; // Reduced from 2 to 32
   hspi4.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi4.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi4.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -263,9 +436,23 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4, GPIO_PIN_SET); // CS pin HIGH initially
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_0, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_13, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PE4 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PD0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
@@ -279,6 +466,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PG13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
